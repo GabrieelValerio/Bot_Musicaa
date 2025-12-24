@@ -1,18 +1,12 @@
 import discord
 from discord.ext import commands
 import yt_dlp
-import asyncio
-
-# =====================
-# CONFIGURAÇÕES
-# =====================
 
 YTDL_OPTIONS = {
-    "format": "bestaudio[ext=m4a]/bestaudio/best",
+    "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
     "default_search": "ytsearch",
-    "source_address": "0.0.0.0",
 }
 
 FFMPEG_OPTIONS = {
@@ -20,81 +14,69 @@ FFMPEG_OPTIONS = {
     "options": "-vn",
 }
 
-ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
-
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
     @commands.command(name="play")
     async def play(self, ctx, *, search: str = None):
-
-        if not search:
-            await ctx.send("❌ Uso correto: `!play nome_da_musica_ou_link`")
+        # ❌ Usuário digitou só !play
+        if search is None:
+            await ctx.send("❌ Use `!play <nome ou link da música>`")
             return
 
+        # ❌ Usuário não está em call
         if not ctx.author.voice:
             await ctx.send("❌ Você precisa estar em um canal de voz.")
             return
 
         channel = ctx.author.voice.channel
 
-        if ctx.voice_client:
-            await ctx.voice_client.move_to(channel)
+        # 🔊 Conectar na call
+        if ctx.voice_client is None:
+            vc = await channel.connect()
         else:
-            await channel.connect()
+            vc = ctx.voice_client
+            if vc.channel != channel:
+                await vc.move_to(channel)
 
-        await ctx.send("🔎 Procurando a música...")
-
-        loop = asyncio.get_event_loop()
-        try:
-            info = await loop.run_in_executor(
-                None, lambda: ytdl.extract_info(search, download=False)
-            )
-        except Exception as e:
-            await ctx.send("❌ Erro ao buscar a música.")
-            print(e)
+        # ⛔ Já tocando algo
+        if vc.is_playing():
+            await ctx.send("⚠️ Já estou tocando uma música.")
             return
 
-        if "entries" in info:
-            info = info["entries"][0]
-
-        if not info or "url" not in info:
-            await ctx.send("❌ Não encontrei nenhuma música.")
-            return
-
-        url = info["url"]
-        title = info.get("title", "Música desconhecida")
-
-        if ctx.voice_client.is_playing():
-            ctx.voice_client.stop()
+        await ctx.send("🔎 Procurando música...")
 
         try:
+            info = self.ytdl.extract_info(search, download=False)
+
+            if "entries" in info:
+                info = info["entries"][0]
+
+            url = info["url"]
+            title = info.get("title", "Música desconhecida")
+
             source = discord.FFmpegPCMAudio(
                 url,
-                executable="/usr/bin/ffmpeg",
                 **FFMPEG_OPTIONS
             )
+
+            vc.play(source)
+            await ctx.send(f"🎶 Tocando agora: **{title}**")
+
         except Exception as e:
-            await ctx.send("❌ Falha ao criar o player de áudio.")
-            print("FFMPEG ERROR:", e)
-            return
+            await ctx.send("❌ Erro ao tocar a música.")
+            print("ERRO PLAY:", e)
 
-        ctx.voice_client.play(
-            source,
-            after=lambda e: print(f"Erro no áudio: {e}") if e else None
-        )
-
-        await ctx.send(f"🎶 Tocando agora: **{title}**")
-
-    @commands.command()
+    @commands.command(name="stop")
     async def stop(self, ctx):
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Bot desconectado.")
+            await ctx.send("⏹️ Música parada e desconectado.")
         else:
-            await ctx.send("❌ O bot não está em call.")
+            await ctx.send("❌ Não estou em um canal de voz.")
 
 
 async def setup(bot):
