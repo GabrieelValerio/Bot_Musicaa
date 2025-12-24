@@ -61,10 +61,18 @@ class Music(commands.Cog):
 
         def get_audio():
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(search, download=False)
+                if not search.startswith("http"):
+                    search_query = f"ytsearch:1:{search}"
+                else:
+                    search_query = search
+
+                info = ydl.extract_info(search_query, download=False)
+
                 if "entries" in info:
                     info = info["entries"][0]
+
                 return info["url"], info.get("title", "Música")
+
 
         try:
             url, title = await asyncio.to_thread(get_audio)
