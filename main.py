@@ -3,13 +3,17 @@ from discord.ext import commands
 import os
 
 intents = discord.Intents.default()
+intents.message_content = True
 
-class Bot(commands.Bot):
-    async def setup_hook(self):
-        await self.load_extension("music")
-        await self.tree.sync()
-        print("✅ Slash commands sincronizados")
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-bot = Bot(command_prefix="!", intents=intents)
+@bot.event
+async def on_ready():
+    print(f"✅ Bot online como {bot.user}")
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+async def main():
+    await bot.load_extension("music")
+    await bot.start(os.getenv("DISCORD_TOKEN"))
+
+import asyncio
+asyncio.run(main())
