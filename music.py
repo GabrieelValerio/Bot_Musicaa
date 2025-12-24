@@ -1,12 +1,13 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import yt_dlp
 import asyncio
 
 YDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
-    "quiet": True,
+    "quiet": True
 }
 
 FFMPEG_OPTIONS = {
@@ -15,42 +16,40 @@ FFMPEG_OPTIONS = {
 }
 
 class Music(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.queue = []
-        self.is_playing = False
         self.voice_client: discord.VoiceClient | None = None
-        self.stay_247 = True  # modo 24/7
+        self.is_playing = False
+        self.stay_247 = True
 
-    # ========================
-    # 🔊 PLAY
-    # ========================
-    @commands.command(name="play")
-    async def play(self, ctx, *, search: str = None):
-        if search is None:
-            await ctx.send("❌ Use: `!play <nome ou link>`")
+    # ======================
+    # 🎵 PLAY
+    # ======================
+    @app_commands.command(name="play", description="Tocar música do YouTube")
+    @app_commands.describe(search="Nome ou link da música")
+    async def play(self, interaction: discord.Interaction, search: str):
+        await interaction.response.defer()
+
+        if not interaction.user.voice:
+            await interaction.followup.send("❌ Você precisa estar em um canal de voz.")
             return
 
-        if not ctx.author.voice:
-            await ctx.send("❌ Você precisa estar em um canal de voz.")
-            return
-
-        channel = ctx.author.voice.channel
+        channel = interaction.user.voice.channel
 
         if self.voice_client is None or not self.voice_client.is_connected():
             self.voice_client = await channel.connect(reconnect=True)
 
-        # adiciona à fila
         self.queue.append(search)
-        await ctx.send(f"🎶 Adicionado à fila: **{search}**")
+        await interaction.followup.send(f"🎶 Adicionado à fila: **{search}**")
 
         if not self.is_playing:
-            await self.play_next(ctx)
+            await self.play_next(interaction)
 
-    # ========================
-    # ▶️ TOCAR PRÓXIMA
-    # ========================
-    async def play_next(self, ctx):
+    # ======================
+    # ▶️ PLAY NEXT
+    # ======================
+    async def play_next(self, interaction: discord.Interaction):
         if len(self.queue) == 0:
             self.is_playing = False
             if not self.stay_247 and self.voice_client:
@@ -74,71 +73,83 @@ class Music(commands.Cog):
             self.voice_client.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(
-                    self.play_next(ctx), self.bot.loop
+                    self.play_next(interaction), self.bot.loop
                 )
             )
 
-            await ctx.send(f"▶️ Tocando agora: **{title}**")
+            await interaction.followup.send(f"▶️ Tocando agora: **{title}**")
 
         except Exception as e:
-            await ctx.send("❌ Erro ao tocar a música.")
             print("ERRO PLAY:", e)
-            await self.play_next(ctx)
+            await interaction.followup.send("❌ Erro ao tocar a música.")
+            await self.play_next(interaction)
 
-    # ========================
+    # ======================
     # ⏭️ SKIP
-    # ========================
-    @commands.command(name="skip")
-    async def skip(self, ctx):
+    # ======================
+    @app_commands.command(name="skip", description="Pular música atual")
+    async def skip(self, interaction: discord.Interaction):
         if self.voice_client and self.voice_client.is_playing():
             self.voice_client.stop()
-            await ctx.send("⏭️ Música pulada.")
+            await interaction.response.send_message("⏭️ Música pulada.")
         else:
-            await ctx.send("❌ Nada tocando.")
+            await interaction.response.send_message("❌ Nada tocando.")
 
-    # ========================
+    # ======================
+    # ⏸️ PAUSE
+    # ======================
+    @app_commands.command(name="pause", description="Pausar música")
+    async def pause(self, interaction: discord.Interaction):
+        if self.voice_client and self.voice_client.is_playing():
+            self.voice_client.pause()
+            await interaction.response.send_message("⏸️ Pausado.")
+        else:
+            await interaction.response.send_message("❌ Nada tocando.")
+
+    # ======================
+    # ▶️ RESUME
+    # ======================
+    @app_commands.command(name="resume", description="Continuar música")
+    async def resume(self, interaction: discord.Interaction):
+        if self.voice_client and self.voice_client.is_paused():
+            self.voice_client.resume()
+            await interaction.response.send_message("▶️ Continuando.")
+        else:
+            await interaction.response.send_message("❌ Nada pausado.")
+
+    # ======================
     # ⏹️ STOP
-    # ========================
-    @commands.command(name="stop")
-    async def stop(self, ctx):
+    # ======================
+    @app_commands.command(name="stop", description="Parar música e limpar fila")
+    async def stop(self, interaction: discord.Interaction):
         self.queue.clear()
         if self.voice_client:
             self.voice_client.stop()
-        await ctx.send("⏹️ Música parada e fila limpa.")
+        await interaction.response.send_message("⏹️ Música parada e fila limpa.")
 
-    # ========================
-    # ⏸️ PAUSE
-    # ========================
-    @commands.command(name="pause")
-    async def pause(self, ctx):
-        if self.voice_client and self.voice_client.is_playing():
-            self.voice_client.pause()
-            await ctx.send("⏸️ Pausado.")
-        else:
-            await ctx.send("❌ Nada tocando.")
+    # ======================
+    # 📜 QUEUE
+    # ======================
+    @app_commands.command(name="queue", description="Ver fila de músicas")
+    async def queue_cmd(self, interaction: discord.Interaction):
+        if not self.queue:
+            await interaction.response.send_message("📭 Fila vazia.")
+            return
 
-    # ========================
-    # ▶️ RESUME
-    # ========================
-    @commands.command(name="resume")
-    async def resume(self, ctx):
-        if self.voice_client and self.voice_client.is_paused():
-            self.voice_client.resume()
-            await ctx.send("▶️ Continuando.")
-        else:
-            await ctx.send("❌ Nada pausado.")
+        text = "\n".join(f"{i+1}. {m}" for i, m in enumerate(self.queue))
+        await interaction.response.send_message(f"📜 **Fila:**\n{text}")
 
-    # ========================
+    # ======================
     # 🔁 24/7
-    # ========================
-    @commands.command(name="247")
-    async def toggle_247(self, ctx):
+    # ======================
+    @app_commands.command(name="247", description="Ativar/desativar modo 24/7")
+    async def toggle_247(self, interaction: discord.Interaction):
         self.stay_247 = not self.stay_247
         status = "ATIVADO" if self.stay_247 else "DESATIVADO"
-        await ctx.send(f"🔁 Modo 24/7 {status}.")
+        await interaction.response.send_message(f"🔁 Modo 24/7 {status}")
 
-# ========================
+# ======================
 # SETUP
-# ========================
-async def setup(bot):
+# ======================
+async def setup(bot: commands.Bot):
     await bot.add_cog(Music(bot))
