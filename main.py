@@ -1,18 +1,15 @@
-import os
 import discord
 from discord.ext import commands
+import os
 
 intents = discord.Intents.default()
-intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class Bot(commands.Bot):
+    async def setup_hook(self):
+        await self.load_extension("music")
+        await self.tree.sync()
+        print("✅ Slash commands sincronizados")
 
-@bot.event
-async def on_ready():
-    print(f"✅ Bot online como {bot.user}")
+bot = Bot(command_prefix="!", intents=intents)
 
-async def setup_hook():
-    await bot.load_extension("music")
-
-bot.setup_hook = setup_hook
 bot.run(os.getenv("DISCORD_TOKEN"))
