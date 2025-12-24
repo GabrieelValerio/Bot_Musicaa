@@ -19,7 +19,7 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.listening,
-            name="Tocando uma rave, se quiser se juntar use /help 🎶"
+            name="Pensando na morte do Kazunari Nara 😍"
         )
     )
     print(f"✅ Bot online como {bot.user}")
