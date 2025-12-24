@@ -4,16 +4,24 @@ import os
 import asyncio
 
 intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class Bot(commands.Bot):
+    async def setup_hook(self):
+        await self.load_extension("music")
+        await self.tree.sync()
+
+bot = Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.listening,
+            name="Tocando uma rave, se quiser se juntar use /help 🎶"
+        )
+    )
     print(f"✅ Bot online como {bot.user}")
 
-async def main():
-    await bot.load_extension("music")
-    await bot.start(os.getenv("DISCORD_TOKEN"))
-
-asyncio.run(main())
+bot.run(os.getenv("DISCORD_TOKEN"))
