@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import yt_dlp
 
-YTDL_OPTIONS = {
+YDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
@@ -11,72 +11,73 @@ YTDL_OPTIONS = {
 
 FFMPEG_OPTIONS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn",
+    "options": "-vn"
 }
 
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
     @commands.command(name="play")
     async def play(self, ctx, *, search: str = None):
-        # ❌ Usuário digitou só !play
-        if search is None:
-            await ctx.send("❌ Use `!play <nome ou link da música>`")
-            return
+        # ❌ usuário não digitou nada
+        if not search:
+            return await ctx.send("❌ Você precisa informar um link ou nome da música.\nEx: `!play link`")
 
-        # ❌ Usuário não está em call
+        # ❌ usuário não está em call
         if not ctx.author.voice:
-            await ctx.send("❌ Você precisa estar em um canal de voz.")
-            return
+            return await ctx.send("❌ Você precisa estar em um canal de voz.")
 
-        channel = ctx.author.voice.channel
+        voice_channel = ctx.author.voice.channel
 
-        # 🔊 Conectar na call
-        if ctx.voice_client is None:
-            vc = await channel.connect()
+        # conecta na call
+        if not ctx.voice_client:
+            vc = await voice_channel.connect()
         else:
             vc = ctx.voice_client
-            if vc.channel != channel:
-                await vc.move_to(channel)
 
-        # ⛔ Já tocando algo
-        if vc.is_playing():
-            await ctx.send("⚠️ Já estou tocando uma música.")
-            return
-
-        await ctx.send("🔎 Procurando música...")
+        await ctx.send("🔍 Procurando música...")
 
         try:
-            info = self.ytdl.extract_info(search, download=False)
+            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(search, download=False)
 
-            if "entries" in info:
-                info = info["entries"][0]
+                # se for pesquisa
+                if "entries" in info:
+                    info = info["entries"][0]
 
-            url = info["url"]
-            title = info.get("title", "Música desconhecida")
+                url = info.get("url")
+                title = info.get("title")
 
+                if not url:
+                    return await ctx.send("❌ Não consegui obter o áudio desse vídeo.")
+
+        except Exception as e:
+            print("YT-DLP ERROR:", e)
+            return await ctx.send("❌ Erro ao buscar a música.")
+
+        try:
             source = discord.FFmpegPCMAudio(
                 url,
+                executable="ffmpeg",
                 **FFMPEG_OPTIONS
             )
 
+            vc.stop()
             vc.play(source)
+
             await ctx.send(f"🎶 Tocando agora: **{title}**")
 
         except Exception as e:
+            print("FFMPEG ERROR:", e)
             await ctx.send("❌ Erro ao tocar a música.")
-            print("ERRO PLAY:", e)
 
     @commands.command(name="stop")
     async def stop(self, ctx):
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Música parada e desconectado.")
-        else:
-            await ctx.send("❌ Não estou em um canal de voz.")
+            await ctx.send("⏹️ Música parada e bot desconectado.")
 
 
 async def setup(bot):
