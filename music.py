@@ -15,50 +15,53 @@ FFMPEG_OPTIONS = {
     "options": "-vn",
 }
 
+ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
+
 
 class Music(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot):
         self.bot = bot
 
-    async def ensure_voice(self, ctx):
-        if ctx.author.voice is None:
-            await ctx.send("❌ Você precisa estar em um canal de voz.")
-            return False
-
-        if ctx.voice_client is None:
-            await ctx.author.voice.channel.connect()
-        elif ctx.voice_client.channel != ctx.author.voice.channel:
-            await ctx.voice_client.move_to(ctx.author.voice.channel)
-
-        return True
-
     @commands.command(name="play")
-    async def play(self, ctx, *, search: str):
-        if not await self.ensure_voice(ctx):
+    async def play(self, ctx, *, search: str = None):
+        if not search:
+            await ctx.send("❌ Use: `!play nome_da_musica`")
             return
 
-        await ctx.send(f"🔎 Procurando: **{search}**")
+        if not ctx.author.voice:
+            await ctx.send("❌ Você precisa estar em um canal de voz.")
+            return
+
+        voice_channel = ctx.author.voice.channel
+
+        if ctx.voice_client:
+            await ctx.voice_client.move_to(voice_channel)
+        else:
+            await voice_channel.connect()
+
+        await ctx.send("🔎 Procurando música...")
 
         loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None, lambda: ytdl.extract_info(search, download=False)
+        )
 
-        def extract():
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ytdl:
-                return ytdl.extract_info(search, download=False)
+        if "entries" in data:
+            data = data["entries"][0]
 
-        info = await loop.run_in_executor(None, extract)
+        if not data or "url" not in data:
+            await ctx.send("❌ Não consegui encontrar essa música.")
+            return
 
-        if "entries" in info:
-            info = info["entries"][0]
-
-        url = info["url"]
-        title = info.get("title", "Desconhecido")
+        url = data["url"]
+        title = data.get("title", "Música desconhecida")
 
         source = discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS)
 
-        if ctx.voice_client.is_playing():
-            ctx.voice_client.stop()
-
-        ctx.voice_client.play(source)
+        ctx.voice_client.play(
+            source,
+            after=lambda e: print(f"Erro no player: {e}") if e else None,
+        )
 
         await ctx.send(f"🎶 Tocando agora: **{title}**")
 
@@ -66,9 +69,8 @@ class Music(commands.Cog):
     async def stop(self, ctx):
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Música parada e desconectado.")
+            await ctx.send("⏹️ Música parada e bot desconectado.")
 
 
-# ⚠️ OBRIGATÓRIO para discord.py 2.x
-async def setup(bot: commands.Bot):
+async def setup(bot):
     await bot.add_cog(Music(bot))
