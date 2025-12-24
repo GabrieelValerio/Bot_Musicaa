@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import asyncio
-from spotify import spotify_to_search
 
 ytdlp_opts = {
     "format": "bestaudio/best",
@@ -46,9 +45,6 @@ class Music(commands.Cog):
         if not ctx.author.voice:
             return await ctx.send("❌ Entre em um canal de voz.")
 
-        if "spotify.com" in query:
-            query = spotify_to_search(query)
-
         if not ctx.voice_client:
             await ctx.author.voice.channel.connect()
 
@@ -72,23 +68,14 @@ class Music(commands.Cog):
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
-            await ctx.send("⏭️ Música pulada.")
+            await ctx.send("⏭️ Pulado.")
 
     @commands.command()
     async def stop(self, ctx):
         if ctx.voice_client:
             self.queue[ctx.guild.id] = []
             await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Bot desconectado.")
+            await ctx.send("⏹️ Desconectado.")
 
-    @commands.command()
-    async def pause(self, ctx):
-        if ctx.voice_client.is_playing():
-            ctx.voice_client.pause()
-            await ctx.send("⏸️ Pausado.")
-
-    @commands.command()
-    async def resume(self, ctx):
-        if ctx.voice_client.is_paused():
-            ctx.voice_client.resume()
-            await ctx.send("▶️ Retomado.")
+def setup(bot):
+    bot.add_cog(Music(bot))
