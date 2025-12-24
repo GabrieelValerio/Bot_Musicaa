@@ -8,6 +8,8 @@ import os
 
 CONFIG_FILE = "guild_config.json"
 
+# ================= CONFIG =================
+
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         return {}
@@ -32,6 +34,8 @@ def get_config(guild_id):
         save_config(guild_config)
     return guild_config[gid]
 
+# ================= YTDLP =================
+
 YDL_OPTIONS = {
     "format": "bestaudio/best",
     "quiet": True,
@@ -44,26 +48,29 @@ FFMPEG_OPTIONS = {
     "options": "-vn"
 }
 
+# ================= COG =================
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     async def play_next(self, guild):
-        if guild.id not in queues or not queues[guild.id]:
-            if not get_config(guild.id)["stay"]:
-                vc = guild.voice_client
-                if vc:
-                    await vc.disconnect()
-            return
-
         vc = guild.voice_client
         if not vc:
             return
 
-        url = queues[guild.id][0]
+        if guild.id not in queues or not queues[guild.id]:
+            if not get_config(guild.id)["stay"]:
+                await vc.disconnect()
+            return
+
         config = get_config(guild.id)
+        url = queues[guild.id][0]
 
         def after_play(error):
+            if error:
+                print("PLAYER ERROR:", error)
+
             if not config["loop"]:
                 queues[guild.id].pop(0)
 
@@ -80,12 +87,14 @@ class Music(commands.Cog):
             after=after_play
         )
 
-    @app_commands.command(name="play", description="Tocar música do YouTube")
+    # ================= COMMANDS =================
+
+    @app_commands.command(name="play", description="Tocar música do YouTube (nome ou link)")
     async def play(self, interaction: discord.Interaction, busca: str):
         await interaction.response.defer()
 
         if not interaction.user.voice:
-            await interaction.followup.send("❌ Entre em um canal de voz.")
+            await interaction.followup.send("❌ Você precisa estar em um canal de voz.")
             return
 
         vc = interaction.guild.voice_client
@@ -98,61 +107,112 @@ class Music(commands.Cog):
             info = ydl.extract_info(busca, download=False)
             if "entries" in info:
                 url = info["entries"][0]["url"]
+                title = info["entries"][0]["title"]
             else:
                 url = info["url"]
+                title = info["title"]
 
         queues[interaction.guild.id].append(url)
 
         if not vc.is_playing():
             await self.play_next(interaction.guild)
 
-        await interaction.followup.send("🎶 Música adicionada à fila")
+        await interaction.followup.send(f"🎶 **Adicionado à fila:** {title}")
 
-    @app_commands.command(name="pause")
+    @app_commands.command(name="skip", description="Pular a música atual")
+    async def skip(self, interaction: discord.Interaction):
+        vc = interaction.guild.voice_client
+        if vc and vc.is_playing():
+            vc.stop()
+            await interaction.response.send_message("⏭️ Música pulada")
+
+    @app_commands.command(name="queue", description="Mostrar fila de músicas")
+    async def queue(self, interaction: discord.Interaction):
+        fila = queues.get(interaction.guild.id)
+
+        if not fila:
+            await interaction.response.send_message("📭 A fila está vazia.")
+            return
+
+        texto = ""
+        for i, _ in enumerate(fila[:10], start=1):
+            texto += f"{i}. Música\n"
+
+        embed = discord.Embed(
+            title="🎶 Fila de Reprodução",
+            description=texto,
+            color=discord.Color.blurple()
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="pause", description="Pausar música")
     async def pause(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if vc and vc.is_playing():
             vc.pause()
-            await interaction.response.send_message("⏸️ Pausado")
+            await interaction.response.send_message("⏸️ Música pausada")
 
-    @app_commands.command(name="resume")
+    @app_commands.command(name="resume", description="Retomar música")
     async def resume(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if vc and vc.is_paused():
             vc.resume()
-            await interaction.response.send_message("▶️ Retomado")
+            await interaction.response.send_message("▶️ Música retomada")
 
-    @app_commands.command(name="leave")
+    @app_commands.command(name="leave", description="Remover o bot do canal")
     async def leave(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if vc:
             queues.pop(interaction.guild.id, None)
             await vc.disconnect()
-            await interaction.response.send_message("👋 Saí do canal")
+            await interaction.response.send_message("👋 Saí do canal de voz")
 
-    @app_commands.command(name="loop")
+    @app_commands.command(name="loop", description="Ativar/desativar loop")
     async def loop(self, interaction: discord.Interaction):
         config = get_config(interaction.guild.id)
         config["loop"] = not config["loop"]
         save_config(guild_config)
-        await interaction.response.send_message(f"🔁 Loop: {config['loop']}")
+        await interaction.response.send_message(f"🔁 Loop: **{config['loop']}**")
 
-    @app_commands.command(name="247")
+    @app_commands.command(name="247", description="Manter o bot 24/7 no canal")
     async def stay(self, interaction: discord.Interaction):
         config = get_config(interaction.guild.id)
         config["stay"] = not config["stay"]
         save_config(guild_config)
-        await interaction.response.send_message(f"🔒 24/7: {config['stay']}")
+        await interaction.response.send_message(f"🔒 24/7: **{config['stay']}**")
 
-    @app_commands.command(name="volume")
+    @app_commands.command(name="volume", description="Alterar volume (0 a 100)")
     async def volume(self, interaction: discord.Interaction, valor: int):
         if not 0 <= valor <= 100:
-            await interaction.response.send_message("❌ Volume entre 0 e 100")
+            await interaction.response.send_message("❌ Volume entre 0 e 100.")
             return
         config = get_config(interaction.guild.id)
         config["volume"] = valor / 100
         save_config(guild_config)
-        await interaction.response.send_message(f"🔊 Volume definido para {valor}%")
+        await interaction.response.send_message(f"🔊 Volume: **{valor}%**")
+
+    @app_commands.command(name="help", description="Mostrar comandos do bot")
+    async def help(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🎶 Comandos do Bot de Música",
+            description="Controle completo de música",
+            color=discord.Color.purple()
+        )
+
+        embed.add_field(name="/play", value="Tocar música (nome ou link)", inline=False)
+        embed.add_field(name="/pause", value="Pausar música", inline=False)
+        embed.add_field(name="/resume", value="Retomar música", inline=False)
+        embed.add_field(name="/skip", value="Pular música", inline=False)
+        embed.add_field(name="/queue", value="Ver fila", inline=False)
+        embed.add_field(name="/loop", value="Loop da música", inline=False)
+        embed.add_field(name="/volume", value="Alterar volume", inline=False)
+        embed.add_field(name="/247", value="Bot 24/7", inline=False)
+        embed.add_field(name="/leave", value="Remover bot", inline=False)
+
+        embed.set_footer(text="Tocando uma rave, se quiser se juntar use /help 🎶")
+
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
